@@ -2,6 +2,8 @@
 
 这是一个用于规划最终幻想14（FFXIV）战斗减伤策略的工具。
 
+直接访问：[FFXIV Mitigation Composer](https://etnatker.github.io/xiv-mit-composer/)
+
 ## 特性
 
 - **可视化时间轴**：直观地查看和编辑战斗时间轴。
