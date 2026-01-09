@@ -16,8 +16,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, onClose, positi
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsVisible(true);
-    
+
     const handleClickOutside = () => {
       setIsVisible(false);
       setTimeout(onClose, 150); // Delay closing to allow fade-out animation
@@ -54,6 +55,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, onClose, positi
       adjustedX = Math.max(5, adjustedX);
       adjustedY = Math.max(5, adjustedY);
 
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAdjustedPosition({ x: adjustedX, y: adjustedY });
     }
   }, [position]);
@@ -74,9 +76,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, onClose, positi
         {items.map((item, index) => (
           <li key={index}>
             <button
-              className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors ${
-                item.danger ? 'text-red-400 hover:text-red-300' : 'text-gray-200'
-              }`}
+              className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors ${item.danger ? 'text-red-400 hover:text-red-300' : 'text-gray-200'
+                }`}
               onClick={(e) => {
                 e.stopPropagation();
                 item.onClick();

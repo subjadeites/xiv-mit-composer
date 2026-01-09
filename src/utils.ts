@@ -2,7 +2,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
-    return twMerge(clsx(inputs));
+  return twMerge(clsx(inputs));
 }
 
 /**
@@ -24,7 +24,7 @@ export function parseFFLogsUrl(url: string): { reportCode: string; fightId: stri
     }
 
     const reportCode = match[1];
-    let fightId = match[2] || '';
+    const fightId = match[2] || '';
 
     return { reportCode, fightId };
   } catch (error) {

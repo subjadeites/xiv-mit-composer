@@ -10,10 +10,15 @@ import { Timeline } from './components/Timeline/Timeline';
 import { SkillCard } from './components/SkillCard';
 import { MitigationBar } from './components/Timeline/MitigationBar';
 
+type ActiveDragItem =
+  | { type: 'new-skill'; skill: Skill }
+  | { type: 'existing-mit'; mit: MitEvent }
+  | null;
+
 export default function App() {
   const {
     apiKey, reportCode, fightId,
-    setApiKey, setReportCode, setFightId, setReportAndFightFromUrl,
+    setApiKey, setReportCode, setFightId,
     loadFightMetadata,
     fight, actors,
     selectedJob, setSelectedJob,
@@ -81,10 +86,10 @@ export default function App() {
   };
 
   // Drag Overlay State
-  const [activeItem, setActiveItem] = useState<any>(null); // Store the entire data object
+  const [activeItem, setActiveItem] = useState<ActiveDragItem>(null); // Store the entire data object
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveItem(event.active.data.current);
+    setActiveItem(event.active.data.current as ActiveDragItem);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {

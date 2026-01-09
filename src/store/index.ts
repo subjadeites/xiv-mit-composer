@@ -89,7 +89,7 @@ export const useStore = create<AppState>()(
                     let fightMeta;
                     if (fightId === 'last') {
                         // Find the last fight in the report
-                        fightMeta = report.fights[report.fights.length-1]
+                        fightMeta = report.fights[report.fights.length - 1]
                     } else {
                         // Normal case: find fight by ID
                         fightMeta = report.fights.find((f) => f.id === Number(fightId));
@@ -117,9 +117,10 @@ export const useStore = create<AppState>()(
                         }));
 
                     set({ fight, actors, isLoading: false });
-                } catch (err: any) {
+                } catch (err: unknown) {
                     console.error(err);
-                    set({ error: err.message || '加载战斗失败', isLoading: false });
+                    const msg = err instanceof Error ? err.message : String(err);
+                    set({ error: msg || '加载战斗失败', isLoading: false });
                 }
             },
 
@@ -141,7 +142,7 @@ export const useStore = create<AppState>()(
                     ]);
 
                     // 后处理添加 tMs
-                    const processTimestamp = (e: any) => ({ ...e, tMs: e.timestamp - fight.start });
+                    const processTimestamp = <T extends DamageEvent | CastEvent>(e: T) => ({ ...e, tMs: e.timestamp - fight.start });
 
                     // --- 伤害事件合并逻辑 ---
                     const dict = new Map<number, { calc?: DamageEvent, dmg?: DamageEvent }>();
@@ -204,6 +205,7 @@ export const useStore = create<AppState>()(
                         isLoading: false
                         // 注意: isRendering 仍然为 true，将在 Timeline 渲染完成后设置为 false
                     });
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 } catch (err: any) {
                     console.error(err);
                     set({ error: err.message || '加载事件失败', isLoading: false, isRendering: false });

@@ -1,7 +1,7 @@
 import { useDraggable } from '@dnd-kit/core';
 // import { CSS } from '@dnd-kit/utilities';
 import type { MitEvent } from '../../model/types';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { MitigationBar } from './MitigationBar';
 import { ContextMenu } from './ContextMenu';
 
@@ -43,6 +43,7 @@ export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEd
     // 当进入编辑模式时，同步当前时间
     useEffect(() => {
         if (isEditing) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setEditValue((mit.tStartMs / 1000).toFixed(1));
         }
     }, [isEditing, mit.tStartMs]);
