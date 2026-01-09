@@ -24,7 +24,7 @@ export default function App() {
     selectedJob, setSelectedJob,
     selectedPlayerId, setSelectedPlayerId,
     loadEvents,
-    addMitEvent, updateMitEvent, setMitEvents,
+    addMitEvent, setMitEvents,
     mitEvents,
     isLoading, isRendering, error
   } = useStore();
@@ -87,13 +87,23 @@ export default function App() {
 
   // Drag Overlay State
   const [activeItem, setActiveItem] = useState<ActiveDragItem>(null); // Store the entire data object
+  const [dragDeltaMs, setDragDeltaMs] = useState(0);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveItem(event.active.data.current as ActiveDragItem);
+    setDragDeltaMs(0);
+  };
+
+  const handleDragMove = (event: DragEndEvent) => { // DragMoveEvent is compatible with DragEndEvent structure enough for delta/active
+    const { delta } = event;
+    // Calculate deltaMs based on current zoom
+    const ms = (delta.x / zoom) * 1000;
+    setDragDeltaMs(ms);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveItem(null);
+    setDragDeltaMs(0);
     const { active, over } = event;
     if (!over) return;
 
@@ -127,7 +137,10 @@ export default function App() {
 
         const tStartMs = (offsetX / zoom) * 1000;
 
-        // --- 技能 CD 校验逻辑 ---
+        // --- 技能 CD 校验逻辑 (Simplified for brevity regarding context) ---
+        // Note: For multi-item drag, we should validate ALL items.
+        // But first, let's keep the single item / new skill logic intact for basic checks.
+
         let skillId: string;
         let selfId: string | null = null; // 当前拖动事件的ID (如果是 new-skill 则为 null)
 
@@ -139,26 +152,24 @@ export default function App() {
           selfId = mit.id;
         }
 
-        const skillDef = SKILLS.find(s => s.id === skillId);
-        if (skillDef) {
-          // 检查冲突
+        // ... existing CD check logic ...
+        const checkConflict = (checkSkillId: string, checkStartMs: number, checkSelfId: string | null, customEvents?: MitEvent[]) => {
+          const eventsToCheck = customEvents || mitEvents;
+          const skillDef = SKILLS.find(s => s.id === checkSkillId);
+          if (!skillDef) return false;
           const cdMs = skillDef.cooldownSec * 1000;
-          const hasConflict = mitEvents.some(m => {
-            if (m.id === selfId) return false; // 排除自己
-            if (m.skillId !== skillId) return false; // 只看同技能
-
-            // 冲突条件: 两个事件间隔小于 CD
-            // |T1 - T2| < CD
-            return Math.abs(m.tStartMs - tStartMs) < cdMs;
+          return eventsToCheck.some(m => {
+            if (m.id === checkSelfId) return false;
+            if (m.skillId !== checkSkillId) return false;
+            return Math.abs(m.tStartMs - checkStartMs) < cdMs;
           });
+        };
 
-          if (hasConflict) {
-            // TODO: 可以加个 toast 提示
-            console.warn("Skill is on cooldown!");
-            return; // 拒绝放置
-          }
+        if (checkConflict(skillId, tStartMs, selfId)) {
+          console.warn("Skill is on cooldown!");
+          return;
         }
-        // --- 校验结束 ---
+        // --- End CD Check ---
 
         if (type === 'new-skill') {
           const skill = active.data.current?.skill as Skill;
@@ -172,17 +183,70 @@ export default function App() {
           addMitEvent(newMit);
         } else if (type === 'existing-mit') {
           const mit = active.data.current?.mit as MitEvent;
-          updateMitEvent(mit.id, {
-            tStartMs: tStartMs,
-            tEndMs: tStartMs + mit.durationMs
-          });
+          const { selectedMitIds, mitEvents, updateMitEvent } = useStore.getState();
+
+          // Use event.delta directly for calculation to align with visual feedback
+          // This avoids issues with getBoundingClientRect on drop for existing items
+          const deltaMs = (event.delta.x / zoom) * 1000;
+
+          // Check if the dragged item is part of the selection
+          if (selectedMitIds.includes(mit.id)) {
+            // Multi-item drag
+
+            // VALIDATION PHASE
+            let isValid = true;
+            for (const id of selectedMitIds) {
+              const item = mitEvents.find(m => m.id === id);
+              if (!item) continue;
+              const newStart = item.tStartMs + deltaMs;
+              if (newStart < 0) {
+                isValid = false; break;
+              }
+
+              // Modified conflict check logic: exclude all selected items from conflict check
+              const conflict = checkConflict(item.skillId, newStart, item.id, mitEvents.filter(m => !selectedMitIds.includes(m.id)));
+              if (conflict) {
+                isValid = false; break;
+              }
+            }
+
+            if (isValid) {
+              selectedMitIds.forEach(id => {
+                const item = mitEvents.find(m => m.id === id);
+                if (item) {
+                  const newStart = item.tStartMs + deltaMs;
+                  updateMitEvent(id, {
+                    tStartMs: newStart,
+                    tEndMs: newStart + item.durationMs
+                  });
+                }
+              });
+            }
+          } else {
+            // Single item drag (legacy behavior for unselected item)
+            // Also use deltaMs for consistency
+            const newStart = mit.tStartMs + deltaMs;
+            const clampedStart = Math.max(0, newStart);
+
+            // Single item collision check
+            if (checkConflict(mit.skillId, clampedStart, mit.id, mitEvents)) {
+              console.warn("Skill is on cooldown (single drag)!");
+              return;
+            }
+
+            updateMitEvent(mit.id, {
+              tStartMs: clampedStart,
+              tEndMs: clampedStart + mit.durationMs
+            });
+          }
         }
       }
     }
   };
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd}>
+
       <div className="min-h-screen bg-gray-900 text-white flex flex-col font-sans">
         {/* 顶部栏 (Top Bar) */}
         <div className="p-4 bg-gray-900 border-b border-gray-800 flex flex-wrap gap-4 items-center z-20 relative shadow-md">
@@ -319,7 +383,7 @@ export default function App() {
 
               {/* 右侧: 时间轴容器 */}
               <div className="flex-1 bg-gray-950 relative overflow-hidden flex flex-col">
-                <Timeline zoom={zoom} setZoom={setZoom} activeDragId={activeItem?.type === 'existing-mit' ? activeItem.mit.id : null} />
+                <Timeline zoom={zoom} setZoom={setZoom} activeDragId={activeItem?.type === 'existing-mit' ? activeItem.mit.id : null} dragDeltaMs={dragDeltaMs} />
               </div>
             </>
           )}

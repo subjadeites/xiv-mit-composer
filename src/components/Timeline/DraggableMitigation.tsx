@@ -13,9 +13,12 @@ interface Props {
     onRemove: (id: string) => void;
     isEditing: boolean;
     onEditChange: (isEditing: boolean) => void;
+    isSelected?: boolean;
+    onSelect?: (mit: MitEvent, e: React.MouseEvent) => void;
+    onRightClick?: (e: React.MouseEvent, mit: MitEvent) => void;
 }
 
-export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEditing, onEditChange }: Props) {
+export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEditing, onEditChange, isSelected, onSelect, onRightClick }: Props) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: mit.id,
         data: { type: 'existing-mit', mit }
@@ -39,6 +42,18 @@ export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEd
 
     const [editValue, setEditValue] = useState((mit.tStartMs / 1000).toFixed(1));
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+    // Close context menu when clicking outside
+    useEffect(() => {
+        if (!contextMenu) return;
+
+        const handleClickOutside = () => {
+            setContextMenu(null);
+        };
+
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, [contextMenu]);
 
     // 当进入编辑模式时，同步当前时间
     useEffect(() => {
@@ -84,14 +99,29 @@ export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEd
             ref={setNodeRef}
             style={style}
             className="group"
-            onContextMenu={handleContextMenu}
+            onContextMenu={(e) => {
+            // If onRightClick is provided (new selection system), use that instead of the default context menu
+            if (onRightClick) {
+                onRightClick(e, mit);
+            } else {
+                handleContextMenu(e);
+            }
+        }}
         >
             <div
                 {...attributes}
                 {...listeners}
                 className={isDragging ? 'opacity-0' : 'h-full w-full'}
             >
-                {!isDragging && <MitigationBar mit={mit} width={width} />}
+                {!isDragging && (
+                    <MitigationBar
+                        mit={mit}
+                        width={width}
+                        isSelected={isSelected}
+                        onClick={(mit, e) => onSelect && onSelect(mit, e)}
+                        onRightClick={(e, mit) => onRightClick && onRightClick(e, mit)}
+                    />
+                )}
             </div>
 
             {/* Context menu for editing */}

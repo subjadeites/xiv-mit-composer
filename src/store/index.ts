@@ -15,6 +15,7 @@ interface AppState {
     actors: Actor[];
     selectedJob: Job | null;
     selectedPlayerId: number | null;
+    selectedMitIds: string[];
 
     damageEvents: DamageEvent[];
     castEvents: CastEvent[];
@@ -31,6 +32,7 @@ interface AppState {
     setReportAndFightFromUrl: (url: string) => void;
     setSelectedJob: (job: Job) => void;
     setSelectedPlayerId: (id: number) => void;
+    setSelectedMitIds: (ids: string[]) => void;
     setIsRendering: (is: boolean) => void;
 
     loadFightMetadata: () => Promise<void>;
@@ -52,6 +54,7 @@ export const useStore = create<AppState>()(
             actors: [],
             selectedJob: 'GNB',
             selectedPlayerId: null,
+            selectedMitIds: [],
             damageEvents: [],
             castEvents: [],
             mitEvents: [],
@@ -73,6 +76,7 @@ export const useStore = create<AppState>()(
             },
             setSelectedJob: (job) => set({ selectedJob: job }),
             setSelectedPlayerId: (id) => set({ selectedPlayerId: id }),
+            setSelectedMitIds: (ids) => set({ selectedMitIds: ids }),
             setIsRendering: (is) => set({ isRendering: is }),
 
             loadFightMetadata: async () => {
