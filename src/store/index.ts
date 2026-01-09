@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Actor, CastEvent, DamageEvent, Fight, Job, MitEvent } from '../model/types';
 import { fetchEvents, fetchReport } from '../api/fflogsV1';
+import { parseFFLogsUrl } from '../utils';
 
 interface AppState {
     // 输入
@@ -27,6 +28,7 @@ interface AppState {
     setApiKey: (key: string) => void;
     setReportCode: (code: string) => void;
     setFightId: (id: string) => void;
+    setReportAndFightFromUrl: (url: string) => void;
     setSelectedJob: (job: Job) => void;
     setSelectedPlayerId: (id: number) => void;
     setIsRendering: (is: boolean) => void;
@@ -60,13 +62,22 @@ export const useStore = create<AppState>()(
             setApiKey: (key) => set({ apiKey: key }),
             setReportCode: (code) => set({ reportCode: code }),
             setFightId: (id) => set({ fightId: id }),
+            setReportAndFightFromUrl: (url) => {
+                const parsed = parseFFLogsUrl(url);
+                if (parsed) {
+                    set({ reportCode: parsed.reportCode, fightId: parsed.fightId });
+                } else {
+                    // Optionally set an error state here if the URL is invalid
+                    console.error('Invalid FFLogs URL:', url);
+                }
+            },
             setSelectedJob: (job) => set({ selectedJob: job }),
             setSelectedPlayerId: (id) => set({ selectedPlayerId: id }),
             setIsRendering: (is) => set({ isRendering: is }),
 
             loadFightMetadata: async () => {
                 const { apiKey, reportCode, fightId } = get();
-                if (!apiKey || !reportCode || !fightId) {
+                if (!apiKey || !reportCode) {
                     set({ error: '缺少输入' });
                     return;
                 }
@@ -74,7 +85,15 @@ export const useStore = create<AppState>()(
                 set({ isLoading: true, error: null });
                 try {
                     const report = await fetchReport(reportCode, apiKey);
-                    const fightMeta = report.fights.find((f) => f.id === Number(fightId));
+
+                    let fightMeta;
+                    if (fightId === 'last') {
+                        // Find the last fight in the report
+                        fightMeta = report.fights[report.fights.length-1]
+                    } else {
+                        // Normal case: find fight by ID
+                        fightMeta = report.fights.find((f) => f.id === Number(fightId));
+                    }
 
                     if (!fightMeta) {
                         throw new Error('报告中未找到该 Fight ID');

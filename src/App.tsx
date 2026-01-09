@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from './store';
 import { SKILLS } from './data/skills';
 import type { Job, MitEvent, Skill } from './model/types';
-import { cn } from "./utils";
+import { cn, parseFFLogsUrl } from "./utils";
 import { DndContext, useSensor, useSensors, PointerSensor, DragOverlay } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { DraggableSkill } from './components/DraggableSkill';
@@ -13,7 +13,7 @@ import { MitigationBar } from './components/Timeline/MitigationBar';
 export default function App() {
   const {
     apiKey, reportCode, fightId,
-    setApiKey, setReportCode, setFightId,
+    setApiKey, setReportCode, setFightId, setReportAndFightFromUrl,
     loadFightMetadata,
     fight, actors,
     selectedJob, setSelectedJob,
@@ -23,6 +23,8 @@ export default function App() {
     mitEvents,
     isLoading, isRendering, error
   } = useStore();
+
+  const [fflogsUrl, setFflogsUrl] = useState('');
 
   const [zoom, setZoom] = useState(50);
 
@@ -194,24 +196,24 @@ export default function App() {
             <div className="w-[1px] h-4 bg-gray-700"></div>
             <input
               type="text"
-              value={reportCode}
-              onChange={e => setReportCode(e.target.value)}
-              className="bg-transparent border-none focus:ring-0 text-sm w-48 px-2 text-gray-200 placeholder-gray-600 outline-none"
-              placeholder="Report Code"
-            />
-            <div className="w-[1px] h-4 bg-gray-700"></div>
-            <input
-              type="number"
-              value={fightId}
-              onChange={e => setFightId(e.target.value)}
-              className="bg-transparent border-none focus:ring-0 text-sm w-16 px-2 text-gray-200 placeholder-gray-600 outline-none"
-              placeholder="Fight ID"
+              value={fflogsUrl}
+              onChange={e => {
+                setFflogsUrl(e.target.value);
+                // Automatically parse the URL when it changes
+                const parsed = parseFFLogsUrl(e.target.value);
+                if (parsed) {
+                  setReportCode(parsed.reportCode);
+                  setFightId(parsed.fightId);
+                }
+              }}
+              className="bg-transparent border-none focus:ring-0 text-sm w-[32rem] px-2 text-gray-200 placeholder-gray-600 outline-none"
+              placeholder="FFLogs URL (e.g., https://cn.fflogs.com/reports/...)"
             />
           </div>
 
           <button
             onClick={() => loadFightMetadata()}
-            disabled={isLoading || !apiKey || !reportCode || !fightId}
+            disabled={isLoading || !apiKey || !reportCode}
             className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:bg-gray-800 px-5 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg active:scale-95 flex items-center gap-2 text-white"
           >
             {isLoading ? <span className="animate-spin">⏳</span> : '加载战斗'}
