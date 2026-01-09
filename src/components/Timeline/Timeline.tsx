@@ -590,7 +590,120 @@ export function Timeline({ zoom, setZoom, containerId = 'mit-lane-container', ac
             >
 
                 {/* SVG 容器 */}
-                <div style={{ width: totalWidth, height: TOTAL_SVG_HEIGHT, position: 'relative' }}>
+                <div
+                    style={{ width: totalWidth, height: TOTAL_SVG_HEIGHT, position: 'relative' }}
+                    onMouseDown={(e) => {
+                        // Only start box selection if clicking on the empty area, not on interactive elements
+                        // Note: Draggable items stop propagation usually, but we check target just in case
+                        if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'svg' || (e.target as HTMLElement).id === containerId) {
+                            e.preventDefault(); // Stop text selection
+                            setContextMenu(null);
+                            setEditingMitId(null);
+
+                            // Start box selection
+                            const containerEl = e.currentTarget;
+                            const rect = containerEl.getBoundingClientRect();
+                            const startX = e.clientX - rect.left;
+                            const startY = e.clientY - rect.top;
+
+                            setBoxSelection({
+                                isActive: true,
+                                startX,
+                                startY,
+                                endX: startX,
+                                endY: startY
+                            });
+
+                            // Global Mouse Move Handler
+                            const handleWindowMouseMove = (wEvent: MouseEvent) => {
+                                const currentRect = containerEl.getBoundingClientRect();
+                                setBoxSelection(prev => ({
+                                    ...prev,
+                                    endX: wEvent.clientX - currentRect.left,
+                                    endY: wEvent.clientY - currentRect.top
+                                }));
+                            };
+
+                            // Global Mouse Up Handler
+                            const handleWindowMouseUp = (wEvent: MouseEvent) => {
+                                window.removeEventListener('mousemove', handleWindowMouseMove);
+                                window.removeEventListener('mouseup', handleWindowMouseUp);
+
+                                const currentRect = containerEl.getBoundingClientRect();
+                                const endX = wEvent.clientX - currentRect.left;
+                                const endY = wEvent.clientY - currentRect.top;
+
+                                setBoxSelection(prev => {
+                                    const finalSelection = {
+                                        isActive: false,
+                                        startX: prev.startX,
+                                        startY: prev.startY,
+                                        endX: endX,
+                                        endY: endY
+                                    };
+
+                                    const selectionRect = {
+                                        left: Math.min(finalSelection.startX, finalSelection.endX),
+                                        top: Math.min(finalSelection.startY, finalSelection.endY),
+                                        right: Math.max(finalSelection.startX, finalSelection.endX),
+                                        bottom: Math.max(finalSelection.startY, finalSelection.endY)
+                                    };
+
+                                    const newlySelectedIds: string[] = [];
+                                    mitEvents.forEach(mit => {
+                                        const left = (mit.tStartMs / 1000) * zoom;
+                                        const width = (mit.durationMs / 1000) * zoom;
+                                        const rowIndex = rowMap[mit.skillId] ?? 0;
+                                        // Calculate global top relative to the main container
+                                        const top = MIT_Y + (rowIndex * 40);
+                                        const height = 32;
+
+                                        if (
+                                            left >= selectionRect.left &&
+                                            left + width <= selectionRect.right &&
+                                            top >= selectionRect.top &&
+                                            top + height <= selectionRect.bottom
+                                        ) {
+                                            newlySelectedIds.push(mit.id);
+                                        }
+                                    });
+
+                                    if (wEvent.ctrlKey || wEvent.metaKey) {
+                                        const currentSelected = useStore.getState().selectedMitIds;
+                                        setSelectedMitIds([
+                                            ...new Set([...currentSelected, ...newlySelectedIds])
+                                        ]);
+                                    } else {
+                                        setSelectedMitIds(newlySelectedIds);
+                                    }
+
+                                    return {
+                                        isActive: false,
+                                        startX: 0,
+                                        startY: 0,
+                                        endX: 0,
+                                        endY: 0
+                                    };
+                                });
+                            };
+
+                            window.addEventListener('mousemove', handleWindowMouseMove);
+                            window.addEventListener('mouseup', handleWindowMouseUp);
+                        }
+                    }}
+                >
+                    {/* Box selection overlay */}
+                    {boxSelection.isActive && (
+                        <div
+                            className="absolute border-2 border-dashed border-blue-400 bg-blue-400/10 z-50 pointer-events-none"
+                            style={{
+                                left: Math.min(boxSelection.startX, boxSelection.endX),
+                                top: Math.min(boxSelection.startY, boxSelection.endY),
+                                width: Math.abs(boxSelection.endX - boxSelection.startX),
+                                height: Math.abs(boxSelection.endY - boxSelection.startY),
+                            }}
+                        />
+                    )}
 
                     <svg width={totalWidth} height={TOTAL_SVG_HEIGHT} className="absolute inset-0 block text-xs pointer-events-none">
                         <defs>
@@ -647,142 +760,9 @@ export function Timeline({ zoom, setZoom, containerId = 'mit-lane-container', ac
                         ref={setMitLaneRef}
                         className="absolute left-0 w-full"
                         style={{ top: MIT_Y, height: MIT_AREA_H }}
-                        onMouseDown={(e) => {
-                            // Only start box selection if clicking on the empty area, not on a mitigation bar
-                            if (e.target === e.currentTarget) {
-                                setContextMenu(null);
-                                setEditingMitId(null);
 
-                                // Start box selection
-                                const containerEl = e.currentTarget;
-                                const rect = containerEl.getBoundingClientRect();
-                                const startX = e.clientX - rect.left;
-                                const startY = e.clientY - rect.top;
-
-                                setBoxSelection({
-                                    isActive: true,
-                                    startX,
-                                    startY,
-                                    endX: startX,
-                                    endY: startY
-                                });
-
-                                // Global Mouse Move Handler
-                                const handleWindowMouseMove = (wEvent: MouseEvent) => {
-                                    // Calculate relative to the container using the cached rect is dangerous if container moves, 
-                                    // but usually fine during a drag. Better to re-query container or use the captured one.
-                                    // Let's re-query to be safe, or just use the cached rect if we assume no scrolling/layout shift during drag.
-                                    // For simplicity and perf, we can use the cached rect or re-read client rect.
-                                    // Since we are inside the closure, let's re-read only if necessary.
-                                    // BUT, wait, e.currentTarget is null in async. 
-                                    // We need to keep a reference to the element.
-                                    const currentRect = containerEl.getBoundingClientRect();
-
-                                    setBoxSelection(prev => ({
-                                        ...prev,
-                                        endX: wEvent.clientX - currentRect.left,
-                                        endY: wEvent.clientY - currentRect.top
-                                    }));
-                                };
-
-                                // Global Mouse Up Handler
-                                const handleWindowMouseUp = (wEvent: MouseEvent) => {
-                                    window.removeEventListener('mousemove', handleWindowMouseMove);
-                                    window.removeEventListener('mouseup', handleWindowMouseUp);
-
-                                    // Finish selection logic
-                                    const currentRect = containerEl.getBoundingClientRect();
-                                    // Use the LAST known BoxSelection state vs recalculating from event
-                                    // Using the event data ensures we get the final release point
-                                    const endX = wEvent.clientX - currentRect.left;
-                                    const endY = wEvent.clientY - currentRect.top;
-
-                                    setBoxSelection(prev => {
-                                        const finalSelection = {
-                                            isActive: false, // Turn off immediately for UI
-                                            startX: prev.startX,
-                                            startY: prev.startY,
-                                            endX: endX,
-                                            endY: endY
-                                        };
-
-                                        const selectionRect = {
-                                            left: Math.min(finalSelection.startX, finalSelection.endX),
-                                            top: Math.min(finalSelection.startY, finalSelection.endY),
-                                            right: Math.max(finalSelection.startX, finalSelection.endX),
-                                            bottom: Math.max(finalSelection.startY, finalSelection.endY)
-                                        };
-
-                                        // Find intersecting/contained items
-                                        const newlySelectedIds: string[] = [];
-
-                                        // We need access to 'mitEvents' here. 
-                                        // Since we are using a closure defined in render/effect, we need to be careful about stale state?
-                                        // Actually, if we define these functions INSIDE onMouseDown, they close over the current 'mitEvents'.
-                                        // This is fine as long as mitEvents doesn't change *during* the drag (which it shouldn't normally).
-                                        mitEvents.forEach(mit => {
-                                            const left = (mit.tStartMs / 1000) * zoom; // Zoom also captured
-                                            const width = (mit.durationMs / 1000) * zoom;
-                                            const rowIndex = rowMap[mit.skillId] ?? 0;
-                                            const top = rowIndex * 40;
-                                            const height = 32;
-
-                                            // Strict containment check
-                                            if (
-                                                left >= selectionRect.left &&
-                                                left + width <= selectionRect.right &&
-                                                top >= selectionRect.top &&
-                                                top + height <= selectionRect.bottom
-                                            ) {
-                                                newlySelectedIds.push(mit.id);
-                                            }
-                                        });
-
-                                        // Update selection
-                                        if (wEvent.ctrlKey || wEvent.metaKey) {
-                                            // Need functional update for setSelectedMitIds to get latest selectedMitIds?
-                                            // No, selectedMitIds is also captured from the closure of the render that created this onMouseDown.
-                                            // Ideally we use the setter callback pattern if we want to be safe against interleaved updates,
-                                            // but for now simple invocation should be okay OR we can't easily mixing closure state and setter.
-                                            // Actually, setSelectedMitIds((prev) => ...) is safe.
-                                            // Use getState to ensure we have the latest selection when drag ends
-                                            const currentSelected = useStore.getState().selectedMitIds;
-                                            setSelectedMitIds([
-                                                ...new Set([...currentSelected, ...newlySelectedIds])
-                                            ]);
-                                        } else {
-                                            setSelectedMitIds(newlySelectedIds);
-                                        }
-
-                                        return {
-                                            isActive: false,
-                                            startX: 0,
-                                            startY: 0,
-                                            endX: 0,
-                                            endY: 0
-                                        };
-                                    });
-                                };
-
-                                window.addEventListener('mousemove', handleWindowMouseMove);
-                                window.addEventListener('mouseup', handleWindowMouseUp);
-                            }
-                        }}
 
                     >
-                        {/* Box selection overlay */}
-                        {boxSelection.isActive && (
-                            <div
-                                className="absolute border-2 border-dashed border-blue-400 bg-blue-400/10 z-50 pointer-events-none"
-                                style={{
-                                    left: Math.min(boxSelection.startX, boxSelection.endX),
-                                    top: Math.min(boxSelection.startY, boxSelection.endY),
-                                    width: Math.abs(boxSelection.endX - boxSelection.startX),
-                                    height: Math.abs(boxSelection.endY - boxSelection.startY),
-                                }}
-                            />
-                        )}
-
                         {mitEvents.map(mit => {
                             const isSelected = selectedMitIds.includes(mit.id);
                             // If this item is selected but NOT the one being actively dragged, apply the drag delta visually
@@ -856,90 +836,94 @@ export function Timeline({ zoom, setZoom, containerId = 'mit-lane-container', ac
             </div>
 
             {/* Selected Mitigation Bar Context Menu */}
-            {contextMenu && selectedMitIds.length > 0 && (
-                <div
-                    className="fixed z-[9999] bg-gray-800 border border-gray-700 rounded shadow-lg py-1 min-w-[160px] max-w-xs"
-                    style={{
-                        left: contextMenu.x,
-                        top: contextMenu.y,
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    data-context-menu-id={selectedMitIds.join(',')}
-                >
-                    <ul className="divide-y divide-gray-700">
-                        {selectedMitIds.length === 1 ? (
-                            <>
-                                <li>
-                                    <button
-                                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors text-gray-200 hover:text-white"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingMitId(selectedMitIds[0]);
-                                            setContextMenu(null);
-                                        }}
-                                    >
-                                        编辑事件
-                                    </button>
-                                </li>
+            {
+                contextMenu && selectedMitIds.length > 0 && (
+                    <div
+                        className="fixed z-[9999] bg-gray-800 border border-gray-700 rounded shadow-lg py-1 min-w-[160px] max-w-xs"
+                        style={{
+                            left: contextMenu.x,
+                            top: contextMenu.y,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        data-context-menu-id={selectedMitIds.join(',')}
+                    >
+                        <ul className="divide-y divide-gray-700">
+                            {selectedMitIds.length === 1 ? (
+                                <>
+                                    <li>
+                                        <button
+                                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors text-gray-200 hover:text-white"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingMitId(selectedMitIds[0]);
+                                                setContextMenu(null);
+                                            }}
+                                        >
+                                            编辑事件
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button
+                                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors text-red-400 hover:text-red-300"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                // Remove the selected item
+                                                removeMitEvent(selectedMitIds[0]);
+                                                setContextMenu(null);
+                                                setSelectedMitIds([]);
+                                            }}
+                                        >
+                                            删除
+                                        </button>
+                                    </li>
+                                </>
+                            ) : (
                                 <li>
                                     <button
                                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors text-red-400 hover:text-red-300"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            // Remove the selected item
-                                            removeMitEvent(selectedMitIds[0]);
+                                            // Remove all selected items
+                                            selectedMitIds.forEach(id => {
+                                                removeMitEvent(id);
+                                            });
                                             setContextMenu(null);
                                             setSelectedMitIds([]);
                                         }}
                                     >
-                                        删除
+                                        删除所选项 ({selectedMitIds.length})
                                     </button>
                                 </li>
-                            </>
-                        ) : (
-                            <li>
-                                <button
-                                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors text-red-400 hover:text-red-300"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        // Remove all selected items
-                                        selectedMitIds.forEach(id => {
-                                            removeMitEvent(id);
-                                        });
-                                        setContextMenu(null);
-                                        setSelectedMitIds([]);
-                                    }}
-                                >
-                                    删除所选项 ({selectedMitIds.length})
-                                </button>
-                            </li>
-                        )}
-                    </ul>
-                </div>
-            )}
+                            )}
+                        </ul>
+                    </div>
+                )
+            }
 
             {/* 工具提示 Portal/覆盖层 */}
-            {tooltip && (
-                <div
-                    className="fixed z-[9999] pointer-events-none bg-gray-900/95 border border-gray-700 text-white text-xs rounded shadow-xl flex flex-col p-2 min-w-[120px]"
-                    style={{
-                        left: tooltip.x,
-                        top: tooltip.y,
-                        transform: 'translate(-50%, -100%)' // 居中显示在 x, y 上方
-                    }}
-                >
-                    {tooltip.items.map((item, idx) => (
-                        <div key={idx} className={`flex items-center justify-between gap-3 ${idx > 0 ? 'mt-1 border-t border-gray-700 pt-1' : ''}`}>
-                            <span className="font-medium truncate flex-1 min-w-0 leading-none" style={{ color: item.color || '#F3F4F6' }}>
-                                {item.title}
-                            </span>
-                            <span className="text-gray-400 font-mono text-[10px] whitespace-nowrap leading-none shrink-0">
-                                {item.subtitle}
-                            </span>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
+            {
+                tooltip && (
+                    <div
+                        className="fixed z-[9999] pointer-events-none bg-gray-900/95 border border-gray-700 text-white text-xs rounded shadow-xl flex flex-col p-2 min-w-[120px]"
+                        style={{
+                            left: tooltip.x,
+                            top: tooltip.y,
+                            transform: 'translate(-50%, -100%)' // 居中显示在 x, y 上方
+                        }}
+                    >
+                        {tooltip.items.map((item, idx) => (
+                            <div key={idx} className={`flex items-center justify-between gap-3 ${idx > 0 ? 'mt-1 border-t border-gray-700 pt-1' : ''}`}>
+                                <span className="font-medium truncate flex-1 min-w-0 leading-none" style={{ color: item.color || '#F3F4F6' }}>
+                                    {item.title}
+                                </span>
+                                <span className="text-gray-400 font-mono text-[10px] whitespace-nowrap leading-none shrink-0">
+                                    {item.subtitle}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )
+            }
+        </div >
     );
 }
