@@ -1,8 +1,8 @@
 import { useDraggable } from '@dnd-kit/core';
 import type { MitEvent } from '../../model/types';
-import { useState, useEffect } from 'react';
+import { useRef } from 'react';
 import { MitigationBar } from './MitigationBar';
-import { ContextMenu } from './ContextMenu';
+import { MS_PER_SEC, TIME_DECIMAL_PLACES } from '../../constants/time';
 
 interface Props {
     mit: MitEvent;
@@ -23,9 +23,7 @@ export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEd
         data: { type: 'existing-mit', mit }
     });
 
-    // 可拖拽元素本身是在时间轴中看到的元素。
-    // 如果使用 DragOverlay，我们需要在拖拽时隐藏此元素。
-    // 为了保持一致性，我们依赖 Overlay 进行展示。
+    // 拖拽时隐藏原条，使用覆盖层显示拖拽中的条目
 
     const style = {
         left: left,
@@ -36,58 +34,18 @@ export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEd
         pointerEvents: 'auto' as const
     };
 
-    const [editValue, setEditValue] = useState((mit.tStartMs / 1000).toFixed(1));
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-
-    // Close context menu when clicking outside
-    useEffect(() => {
-        if (!contextMenu) return;
-
-        const handleClickOutside = () => {
-            setContextMenu(null);
-        };
-
-        document.addEventListener('click', handleClickOutside);
-        return () => document.removeEventListener('click', handleClickOutside);
-    }, [contextMenu]);
-
-    // 当进入编辑模式时，同步当前时间
-    useEffect(() => {
-        if (isEditing) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setEditValue((mit.tStartMs / 1000).toFixed(1));
-        }
-    }, [isEditing, mit.tStartMs]);
+    const editInputRef = useRef<HTMLInputElement>(null);
 
     const handleEditSubmit = () => {
         onEditChange(false);
-        const val = parseFloat(editValue);
+        const rawValue = editInputRef.current?.value ?? '';
+        const val = parseFloat(rawValue);
         if (!isNaN(val)) {
             onUpdate(mit.id, {
-                tStartMs: val * 1000,
-                tEndMs: (val * 1000) + mit.durationMs
+                tStartMs: val * MS_PER_SEC,
+                tEndMs: (val * MS_PER_SEC) + mit.durationMs
             });
         }
-    };
-
-    const handleContextMenu = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setContextMenu({ x: e.clientX, y: e.clientY });
-    };
-
-    const handleEditClick = () => {
-        setContextMenu(null);
-        onEditChange(true);
-    };
-
-    const handleRemoveClick = () => {
-        setContextMenu(null);
-        onRemove(mit.id);
-    };
-
-    const handleContextMenuClose = () => {
-        setContextMenu(null);
     };
 
     return (
@@ -96,11 +54,9 @@ export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEd
             style={style}
             className="group"
             onContextMenu={(e) => {
-                // If onRightClick is provided (new selection system), use that instead of the default context menu
+                // 优先使用外部右键处理
                 if (onRightClick) {
                     onRightClick(e, mit);
-                } else {
-                    handleContextMenu(e);
                 }
             }}
         >
@@ -120,28 +76,7 @@ export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEd
                 )}
             </div>
 
-            {/* Context menu for editing */}
-            {
-                !isDragging && contextMenu && (
-                    <ContextMenu
-                        items={[
-                            {
-                                label: '编辑事件',
-                                onClick: handleEditClick
-                            },
-                            {
-                                label: '删除事件',
-                                onClick: handleRemoveClick,
-                                danger: true
-                            }
-                        ]}
-                        position={contextMenu}
-                        onClose={handleContextMenuClose}
-                    />
-                )
-            }
-
-            {/* Edit form when in edit mode */}
+            {/* 编辑态表单 */}
             {
                 !isDragging && isEditing && (
                     <div
@@ -155,8 +90,8 @@ export function DraggableMitigation({ mit, left, width, onUpdate, onRemove, isEd
                             <input
                                 autoFocus
                                 className="w-16 bg-gray-700 border border-gray-500 rounded text-xs px-2 py-1 text-white focus:border-blue-500 outline-none"
-                                value={editValue}
-                                onChange={e => setEditValue(e.target.value)}
+                                ref={editInputRef}
+                                defaultValue={(mit.tStartMs / MS_PER_SEC).toFixed(TIME_DECIMAL_PLACES)}
                                 onKeyDown={e => e.key === 'Enter' && handleEditSubmit()}
                             />
                         </div>
