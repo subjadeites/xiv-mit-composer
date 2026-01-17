@@ -72,7 +72,7 @@ export const SKILLS: Skill[] = [
     durationSec: 15,
     job: 'PLD',
     color: 'bg-blue-500',
-    actionId: 1193,
+    actionId: 7535,
   },
 
   // 战士 (WAR)
@@ -137,7 +137,7 @@ export const SKILLS: Skill[] = [
     durationSec: 15,
     job: 'WAR',
     color: 'bg-red-500',
-    actionId: 1193,
+    actionId: 7535,
   },
 
   // 暗黑骑士 (DRK)
@@ -157,7 +157,7 @@ export const SKILLS: Skill[] = [
     durationSec: 10,
     job: 'DRK',
     color: 'bg-purple-500',
-    actionId: 1191,
+    actionId: 3634,
   },
   {
     id: 'drk-oblation',
@@ -211,7 +211,7 @@ export const SKILLS: Skill[] = [
     durationSec: 15,
     job: 'DRK',
     color: 'bg-purple-500',
-    actionId: 1193,
+    actionId: 7535,
   },
 
   // 绝枪战士 (GNB)
@@ -276,6 +276,6 @@ export const SKILLS: Skill[] = [
     durationSec: 15,
     job: 'GNB',
     color: 'bg-orange-500',
-    actionId: 1193,
+    actionId: 7535,
   },
 ];
