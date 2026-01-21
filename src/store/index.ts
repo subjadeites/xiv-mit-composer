@@ -1,16 +1,25 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Actor, CastEvent, DamageEvent, Fight, Job, MitEvent } from '../model/types';
+import {
+  type Actor,
+  type CastEvent,
+  type CooldownEvent,
+  type DamageEvent,
+  type Fight,
+  type Job,
+  type MitEvent,
+} from '../model/types';
 import { FFLogsClient } from '../lib/fflogs/client';
 import { FFLogsProcessor } from '../lib/fflogs/processor';
 import { SKILLS } from '../data/skills';
 import { MS_PER_SEC } from '../constants/time';
+import { tryBuildCooldowns } from '../utils/playerCast';
+import { parseFFLogsUrl } from '../utils';
 
 interface AppState {
   // 输入状态
   apiKey: string;
-  reportCode: string;
-  fightId: string; // 以字符串保存输入的战斗 ID
+  fflogsUrl: string;
 
   // 数据状态
   fight: Fight | null;
@@ -23,6 +32,7 @@ interface AppState {
   damageEvents: DamageEvent[];
   castEvents: CastEvent[];
   mitEvents: MitEvent[];
+  cooldownEvents: CooldownEvent[];
 
   // UI 状态
   isLoading: boolean;
@@ -30,8 +40,7 @@ interface AppState {
   error: string | null;
 
   setApiKey: (key: string) => void;
-  setReportCode: (code: string) => void;
-  setFightId: (id: string) => void;
+  setFflogsUrl: (url: string) => void;
   setSelectedJob: (job: Job) => void;
   setSelectedPlayerId: (id: number) => void;
   setSelectedMitIds: (ids: string[]) => void;
@@ -50,8 +59,7 @@ export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       apiKey: '',
-      reportCode: '',
-      fightId: '',
+      fflogsUrl: '',
       fight: null,
       actors: [],
       bossIds: [],
@@ -61,22 +69,24 @@ export const useStore = create<AppState>()(
       damageEvents: [],
       castEvents: [],
       mitEvents: [],
+      cooldownEvents: [],
       isLoading: false,
       isRendering: false,
       error: null,
 
       setApiKey: (key) => set({ apiKey: key }),
-      setReportCode: (code) => set({ reportCode: code }),
-      setFightId: (id) => set({ fightId: id }),
+      setFflogsUrl: (url) => set({ fflogsUrl: url }),
       setSelectedJob: (job) => set({ selectedJob: job }),
       setSelectedPlayerId: (id) => set({ selectedPlayerId: id }),
       setSelectedMitIds: (ids) => set({ selectedMitIds: ids }),
       setIsRendering: (is) => set({ isRendering: is }),
 
       loadFightMetadata: async () => {
-        const { apiKey, reportCode, fightId } = get();
+        const { apiKey, fflogsUrl } = get();
+        const { reportCode, fightId } = parseFFLogsUrl(fflogsUrl) ?? {};
+
         if (!apiKey || !reportCode) {
-          set({ error: '缺少输入' });
+          set({ error: 'FFLogs URL 不合法' });
           return;
         }
 
@@ -132,7 +142,8 @@ export const useStore = create<AppState>()(
       },
 
       loadEvents: async () => {
-        const { apiKey, reportCode, fight, selectedPlayerId, selectedJob, bossIds } = get();
+        const { apiKey, fflogsUrl, fight, selectedPlayerId, selectedJob, bossIds } = get();
+        const { reportCode } = parseFFLogsUrl(fflogsUrl) ?? {};
         if (!apiKey || !reportCode || !fight || !selectedPlayerId) return;
 
         // 标记渲染中，等待 Timeline 通知完成
@@ -194,6 +205,7 @@ export const useStore = create<AppState>()(
 
               return {
                 id: crypto.randomUUID(),
+                eventType: 'mit',
                 skillId: skillDef.id,
                 tStartMs: tStartMs,
                 durationMs: durationMs,
@@ -277,10 +289,13 @@ export const useStore = create<AppState>()(
             (a, b) => a.timestamp - b.timestamp,
           );
 
+          newMitEvents.sort((a, b) => a.tStartMs - b.tStartMs);
+          const cooldowns = tryBuildCooldowns(newMitEvents) ?? [];
           set({
             damageEvents: finalDamages.map(processTimestamp),
             castEvents: finalCasts,
             mitEvents: newMitEvents,
+            cooldownEvents: cooldowns,
             isLoading: false,
             // 等待 Timeline 通知渲染完成后再取消遮罩
           });
@@ -291,21 +306,58 @@ export const useStore = create<AppState>()(
         }
       },
 
-      addMitEvent: (event) => set((state) => ({ mitEvents: [...state.mitEvents, event] })),
-      updateMitEvent: (id, updates) =>
-        set((state) => ({
-          mitEvents: state.mitEvents.map((e) => (e.id === id ? { ...e, ...updates } : e)),
-        })),
-      removeMitEvent: (id) =>
-        set((state) => ({ mitEvents: state.mitEvents.filter((e) => e.id !== id) })),
-      setMitEvents: (events) => set({ mitEvents: events }),
+      addMitEvent: (event: MitEvent) => {
+        set((state) => {
+          const newMits = [...state.mitEvents, event];
+          const cooldownEvents = tryBuildCooldowns(newMits);
+          if (!cooldownEvents) return {};
+
+          newMits.sort((a, b) => a.tStartMs - b.tStartMs);
+          return {
+            mitEvents: newMits,
+            cooldownEvents,
+          };
+        });
+      },
+
+      updateMitEvent: (id: string, updates: Partial<MitEvent>) => {
+        set((state) => {
+          const newMits = state.mitEvents.map((e) => (e.id === id ? { ...e, ...updates } : e));
+          const cooldownEvents = tryBuildCooldowns(newMits);
+          if (!cooldownEvents) return {};
+
+          newMits.sort((a, b) => a.tStartMs - b.tStartMs);
+          return {
+            mitEvents: newMits,
+            cooldownEvents,
+          };
+        });
+      },
+
+      removeMitEvent: (id: string) =>
+        set((state) => {
+          const newMits = state.mitEvents.filter((e) => e.id !== id);
+          const cooldownEvents = tryBuildCooldowns(newMits);
+          if (!cooldownEvents) return {};
+
+          return {
+            mitEvents: newMits,
+            cooldownEvents,
+          };
+        }),
+
+      setMitEvents: (events) => {
+        events.sort((a, b) => a.tStartMs - b.tStartMs);
+        const cooldownEvents = tryBuildCooldowns(events);
+        if (!cooldownEvents) return;
+        set({ mitEvents: events, cooldownEvents });
+      },
     }),
     {
       name: 'xiv-mit-composer-storage',
       partialize: (state) => ({
         apiKey: state.apiKey,
-        reportCode: state.reportCode,
-        fightId: state.fightId,
+        fflogsUrl: state.fflogsUrl,
         selectedJob: state.selectedJob,
         selectedPlayerId: state.selectedPlayerId,
         mitEvents: state.mitEvents,

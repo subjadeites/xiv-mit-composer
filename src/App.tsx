@@ -1,12 +1,10 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
-import type { MitEvent, Skill } from './model/types';
+import { type MitEvent, type Skill } from './model/types';
 import { useStore } from './store';
 import { SKILLS } from './data/skills';
 import { FFLogsExporter } from './lib/fflogs/exporter';
-import { parseFFLogsUrl } from './utils';
-import { simulateSkillStacks } from './utils/cooldowns';
 import { AppHeader } from './components/AppHeader';
 import { DragOverlayLayer, type DragOverlayItem } from './components/DragOverlayLayer';
 import { EmptyState } from './components/EmptyState';
@@ -21,10 +19,9 @@ import { DEFAULT_ZOOM } from './constants/timeline';
 export default function App() {
   const {
     apiKey,
-    reportCode,
+    fflogsUrl,
     setApiKey,
-    setReportCode,
-    setFightId,
+    setFflogsUrl,
     setSelectedMitIds,
     loadFightMetadata,
     fight,
@@ -34,15 +31,15 @@ export default function App() {
     selectedPlayerId,
     setSelectedPlayerId,
     loadEvents,
-    addMitEvent,
     mitEvents,
+    addMitEvent,
+    setMitEvents,
     castEvents,
     isLoading,
     isRendering,
     error,
   } = useStore();
 
-  const [fflogsUrl, setFflogsUrl] = useState('');
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportContent, setExportContent] = useState('');
@@ -65,15 +62,6 @@ export default function App() {
   }, [fight, selectedPlayerId, loadEvents]);
 
   const pixelsToMs = (pixels: number) => (pixels / zoom) * MS_PER_SEC;
-
-  const handleFflogsUrlChange = (value: string) => {
-    setFflogsUrl(value);
-    const parsed = parseFFLogsUrl(value);
-    if (parsed) {
-      setReportCode(parsed.reportCode);
-      setFightId(parsed.fightId);
-    }
-  };
 
   const getEventsToExport = () => {
     const { castEvents, mitEvents } = useStore.getState();
@@ -128,136 +116,85 @@ export default function App() {
     setDragDeltaMs(pixelsToMs(delta.y));
   };
 
+  const getDropStartMs = (event: DragEndEvent) => {
+    const laneEl = document.getElementById('mit-lane-container');
+    if (!laneEl) return null;
+
+    const rect = laneEl.getBoundingClientRect();
+    const initial = event.active.rect.current?.initial;
+    const translated = event.active.rect.current?.translated;
+
+    if (!initial || !translated) return null;
+
+    const offsetY = Math.max(0, translated.top - rect.top);
+    return pixelsToMs(offsetY);
+  };
+
+  const buildMitEventFromSkill = (
+    skillId: string,
+    tStartMs: number,
+    id = crypto.randomUUID(),
+  ): MitEvent | null => {
+    const skillDef = SKILLS.find((s) => s.id === skillId);
+    if (!skillDef) return null;
+    const durationMs = skillDef.durationSec * MS_PER_SEC;
+    return {
+      eventType: 'mit',
+      id,
+      skillId,
+      tStartMs,
+      durationMs,
+      tEndMs: tStartMs + durationMs,
+    };
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveItem(null);
     setDragDeltaMs(0);
     const { active, over } = event;
     if (!over) return;
 
-    if (over.id === 'mit-lane') {
-      const type = active.data.current?.type;
-      const laneEl = document.getElementById('mit-lane-container');
+    if (over.id !== 'mit-lane') {
+      return;
+    }
 
-      if (laneEl) {
-        const rect = laneEl.getBoundingClientRect();
-        const initial = active.rect.current?.initial;
+    const type = active.data.current?.type;
+    const tStartMs = getDropStartMs(event);
+    if (tStartMs === null) return;
 
-        let offsetY = 0;
+    if (type === 'new-skill') {
+      const skill = active.data.current?.skill as Skill;
+      const newMit = buildMitEventFromSkill(skill.id, tStartMs);
+      if (!newMit) return;
 
-        if (initial) {
-          const translated = active.rect.current?.translated;
-          if (translated) {
-            offsetY = translated.top - rect.top;
-          }
-        }
+      addMitEvent(newMit);
+    } else if (type === 'existing-mit') {
+      const mit = active.data.current?.mit as MitEvent;
+      const deltaMs = pixelsToMs(event.delta.y);
+      let eventsToMove: MitEvent[] = [];
 
-        if (offsetY < 0) offsetY = 0;
-
-        const tStartMs = pixelsToMs(offsetY);
-
-        let skillId: string;
-        let selfId: string | null = null;
-
-        if (type === 'new-skill') {
-          skillId = (active.data.current?.skill as Skill).id;
-        } else {
-          const mit = active.data.current?.mit as MitEvent;
-          skillId = mit.skillId;
-          selfId = mit.id;
-        }
-
-        const checkConflict = (
-          checkSkillId: string,
-          checkStartMs: number,
-          checkSelfId: string | null,
-          customEvents?: MitEvent[],
-        ) => {
-          const eventsToCheck = customEvents || mitEvents;
-          const skillDef = SKILLS.find((s) => s.id === checkSkillId);
-          if (!skillDef) return false;
-
-          const relevantEvents = eventsToCheck
-            .filter((m) => m.skillId === checkSkillId && m.id !== checkSelfId)
-            .map((m) => ({ id: m.id, tStartMs: m.tStartMs }));
-
-          relevantEvents.push({ id: 'temp-check', tStartMs: checkStartMs });
-
-          const result = simulateSkillStacks(skillDef, relevantEvents);
-          return !result.isValid;
-        };
-
-        if (checkConflict(skillId, tStartMs, selfId)) {
-          console.warn('Skill is on cooldown!');
-          return;
-        }
-
-        if (type === 'new-skill') {
-          const skill = active.data.current?.skill as Skill;
-          const newMit: MitEvent = {
-            id: crypto.randomUUID(),
-            skillId: skill.id,
-            tStartMs: tStartMs,
-            durationMs: skill.durationSec * MS_PER_SEC,
-            tEndMs: tStartMs + skill.durationSec * MS_PER_SEC,
-          };
-          addMitEvent(newMit);
-        } else if (type === 'existing-mit') {
-          const mit = active.data.current?.mit as MitEvent;
-          const { selectedMitIds, mitEvents, updateMitEvent } = useStore.getState();
-
-          const deltaMs = pixelsToMs(event.delta.y);
-
-          if (selectedMitIds.includes(mit.id)) {
-            let isValid = true;
-            for (const id of selectedMitIds) {
-              const item = mitEvents.find((m) => m.id === id);
-              if (!item) continue;
-              const newStart = item.tStartMs + deltaMs;
-              if (newStart < 0) {
-                isValid = false;
-                break;
-              }
-
-              const conflict = checkConflict(
-                item.skillId,
-                newStart,
-                item.id,
-                mitEvents.filter((m) => !selectedMitIds.includes(m.id)),
-              );
-              if (conflict) {
-                isValid = false;
-                break;
-              }
-            }
-
-            if (isValid) {
-              selectedMitIds.forEach((id) => {
-                const item = mitEvents.find((m) => m.id === id);
-                if (item) {
-                  const newStart = item.tStartMs + deltaMs;
-                  updateMitEvent(id, {
-                    tStartMs: newStart,
-                    tEndMs: newStart + item.durationMs,
-                  });
-                }
-              });
-            }
-          } else {
-            const newStart = mit.tStartMs + deltaMs;
-            const clampedStart = Math.max(0, newStart);
-
-            if (checkConflict(mit.skillId, clampedStart, mit.id, mitEvents)) {
-              console.warn('Skill is on cooldown (single drag)!');
-              return;
-            }
-
-            updateMitEvent(mit.id, {
-              tStartMs: clampedStart,
-              tEndMs: clampedStart + mit.durationMs,
-            });
-          }
-        }
+      const selectedMitIds = useStore.getState().selectedMitIds;
+      if (selectedMitIds.includes(mit.id)) {
+        eventsToMove = mitEvents.filter((m) => selectedMitIds.includes(m.id));
+      } else {
+        eventsToMove = [mit];
       }
+
+      const movedEvents = eventsToMove
+        .map((m) => {
+          const newStart = m.tStartMs + deltaMs;
+          if (newStart < 0) return;
+
+          return {
+            ...m,
+            tStartMs: newStart,
+            tEndMs: newStart + m.durationMs,
+          };
+        })
+        .filter((m) => m !== undefined);
+
+      const movedIds = movedEvents.map((m) => m.id);
+      setMitEvents([...movedEvents, ...mitEvents.filter((m) => !movedIds.includes(m.id))]);
     }
   };
 
@@ -275,11 +212,10 @@ export default function App() {
           apiKey={apiKey}
           fflogsUrl={fflogsUrl}
           isLoading={isLoading}
-          canLoad={!!apiKey && !!reportCode}
           canExport={!!fight && castEvents.length > 0}
           error={error}
           onApiKeyChange={setApiKey}
-          onFflogsUrlChange={handleFflogsUrlChange}
+          onFflogsUrlChange={setFflogsUrl}
           onLoadFight={loadFightMetadata}
           onExportTimeline={handleExportTimeline}
         />

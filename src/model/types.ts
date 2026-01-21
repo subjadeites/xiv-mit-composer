@@ -21,19 +21,47 @@ export interface Skill {
   cooldownSec: number;
   durationSec: number;
   job: Job | 'ALL';
+  color: string;
+  actionId: number; // FFLogs 技能 ID
   icon?: string;
-  color?: string;
-  actionId?: number; // FFLogs 技能 ID
-  stack?: number; // 技能层数,默认为1
+  cooldownGroup?: string; // 共享CD组 ID，在自己进入cd的同时会消耗冷却组的一层cd
 }
 
+export interface CooldownGroup {
+  id: string;
+  cooldownSec: number;
+  stack: number;
+}
+
+export type PlayerEvent = MitEvent | CooldownEvent;
+export type PlayerEventType = 'mit' | 'cooldown';
+
 export interface MitEvent {
+  eventType: PlayerEventType;
   id: string; // UUID
   skillId: string;
   tStartMs: number;
   durationMs: number;
-  // 结束时间戳，便于渲染
   tEndMs: number;
+}
+
+export interface CooldownEvent {
+  eventType: PlayerEventType;
+  // cooldown - 冷却
+  // unusable - 由于某技能使用，在该时间点之前无法额外使用一次
+  cdType: 'cooldown' | 'unusable';
+  skillId: string;
+  tStartMs: number;
+  durationMs: number;
+  tEndMs: number;
+}
+
+export function isMitEvent(event: PlayerEvent): event is MitEvent {
+  return event.eventType === 'mit';
+}
+
+export function isCooldownEvent(event: PlayerEvent): event is CooldownEvent {
+  return event.eventType === 'cooldown';
 }
 
 // API 响应结构（简化版）

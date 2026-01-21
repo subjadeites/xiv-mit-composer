@@ -241,55 +241,45 @@ export function TimelineCanvas({
                 const endX = wEvent.clientX - currentRect.left;
                 const endY = wEvent.clientY - currentRect.top;
 
-                setBoxSelection((prev) => {
-                  const finalSelection = {
-                    isActive: false,
-                    startX: prev.startX,
-                    startY: prev.startY,
-                    endX,
-                    endY,
-                  };
+                const selectionRect = {
+                  left: Math.min(startX, endX),
+                  top: Math.min(startY, endY),
+                  right: Math.max(startX, endX),
+                  bottom: Math.max(startY, endY),
+                };
 
-                  const selectionRect = {
-                    left: Math.min(finalSelection.startX, finalSelection.endX),
-                    top: Math.min(finalSelection.startY, finalSelection.endY),
-                    right: Math.max(finalSelection.startX, finalSelection.endX),
-                    bottom: Math.max(finalSelection.startY, finalSelection.endY),
-                  };
+                const newlySelectedIds: string[] = [];
+                const barWidth = MIT_COLUMN_WIDTH - MIT_COLUMN_PADDING * 2;
+                mitEvents.forEach((mit) => {
+                  const columnIndex = columnMap[mit.skillId] ?? 0;
+                  const left = mitX + columnIndex * MIT_COLUMN_WIDTH + MIT_COLUMN_PADDING;
+                  const top = (mit.tStartMs / MS_PER_SEC) * zoom;
+                  const width = barWidth;
+                  const height = (mit.durationMs / MS_PER_SEC) * zoom;
 
-                  const newlySelectedIds: string[] = [];
-                  const barWidth = MIT_COLUMN_WIDTH - MIT_COLUMN_PADDING * 2;
-                  mitEvents.forEach((mit) => {
-                    const columnIndex = columnMap[mit.skillId] ?? 0;
-                    const left = mitX + columnIndex * MIT_COLUMN_WIDTH + MIT_COLUMN_PADDING;
-                    const top = (mit.tStartMs / MS_PER_SEC) * zoom;
-                    const width = barWidth;
-                    const height = (mit.durationMs / MS_PER_SEC) * zoom;
-
-                    if (
-                      left >= selectionRect.left &&
-                      left + width <= selectionRect.right &&
-                      top >= selectionRect.top &&
-                      top + height <= selectionRect.bottom
-                    ) {
-                      newlySelectedIds.push(mit.id);
-                    }
-                  });
-
-                  if (wEvent.ctrlKey || wEvent.metaKey) {
-                    const currentSelected = useStore.getState().selectedMitIds;
-                    setSelectedMitIds([...new Set([...currentSelected, ...newlySelectedIds])]);
-                  } else {
-                    setSelectedMitIds(newlySelectedIds);
+                  if (
+                    left >= selectionRect.left &&
+                    left + width <= selectionRect.right &&
+                    top >= selectionRect.top &&
+                    top + height <= selectionRect.bottom
+                  ) {
+                    newlySelectedIds.push(mit.id);
                   }
+                });
 
-                  return {
-                    isActive: false,
-                    startX: 0,
-                    startY: 0,
-                    endX: 0,
-                    endY: 0,
-                  };
+                if (wEvent.ctrlKey || wEvent.metaKey) {
+                  const currentSelected = useStore.getState().selectedMitIds;
+                  setSelectedMitIds([...new Set([...currentSelected, ...newlySelectedIds])]);
+                } else {
+                  setSelectedMitIds(newlySelectedIds);
+                }
+
+                setBoxSelection({
+                  isActive: false,
+                  startX: 0,
+                  startY: 0,
+                  endX: 0,
+                  endY: 0,
                 });
               };
 
@@ -317,13 +307,22 @@ export function TimelineCanvas({
           >
             <defs>
               <pattern
-                id="diagonalHatch"
+                id="diagonalHatchCooldown"
                 width="10"
                 height="10"
                 patternTransform="rotate(45 0 0)"
                 patternUnits="userSpaceOnUse"
               >
                 <line x1="0" y1="0" x2="0" y2="10" style={{ stroke: '#EF4444', strokeWidth: 1 }} />
+              </pattern>
+              <pattern
+                id="diagonalHatchUnusable"
+                width="10"
+                height="10"
+                patternTransform="rotate(45 0 0)"
+                patternUnits="userSpaceOnUse"
+              >
+                <line x1="0" y1="0" x2="0" y2="10" style={{ stroke: '#F59E0B', strokeWidth: 1 }} />
               </pattern>
             </defs>
 
