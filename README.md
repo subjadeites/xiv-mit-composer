@@ -11,6 +11,7 @@
 - **可视化时间轴**：直观地查看和编辑战斗时间轴。
 - **拖拽操作**：使用 React dnd-kit 实现流畅的拖拽体验。
 - **界面友好**：沿袭传统excel排轴界面，竖版操作；减伤覆盖高亮，直观准确。
+- **双人排轴**：支持同时显示两个T的减伤轴。
 - **Souma时间轴之友**：支持将排好的轴直接导出为 Souma 时间轴格式。
 
 ![Preview](assets/screenshot.png)
@@ -76,6 +77,24 @@ bun run dev
 bun run build
 ```
 
+## 作者（按第一次PR时间排序）
+
+- [etnAtker](https://github.com/etnAtker)
+
+  编写了初版应用。
+
+- [Loskh](https://github.com/Loskh)
+
+  提供了多项改进提案和其实现，如框选，可堆叠技能支持等。
+
+- [subjadeites](https://github.com/subjadeites)
+
+  巨量代码重构，大量UI翻新，和其他非常多的新功能（如双T排轴支持等）。
+
+- [Slob](https://github.com/BeginnerSlob)
+
+  技能数据提供、修正。
+
 ## 致谢
 
-本项目的启动在很大程度上受到了 @Souma-Sumire 的项目 [ff14-overlay-vue](https://github.com/Souma-Sumire/ff14-overlay-vue) 以及相关 [Issue](https://github.com/Souma-Sumire/ff14-overlay-vue/issues/2) 的启发；实现过程中亦参考并借鉴了 @Souma-Sumire 的时间轴处理代码。与此同时，开发期间也得到了 @Loskh 提供的多项设计提案、耐心协助与代码贡献。在此谨向二位致以诚挚的感谢。
+本项目的启动在很大程度上受到了 @Souma-Sumire 的项目 [ff14-overlay-vue](https://github.com/Souma-Sumire/ff14-overlay-vue) 以及相关 [Issue](https://github.com/Souma-Sumire/ff14-overlay-vue/issues/2) 的启发；实现过程中亦参考并借鉴了 @Souma-Sumire 的时间轴处理代码。
