@@ -1,5 +1,52 @@
 export type Job = 'PLD' | 'WAR' | 'DRK' | 'GNB';
 
+export type MitigationDamageType = 'all' | 'physical' | 'magical';
+export type MitigationTarget = 'boss' | 'player';
+
+export type SkillMitigationTargeting =
+  | {
+      kind: 'self';
+    }
+  | {
+      kind: 'party';
+    }
+  | {
+      kind: 'ally';
+      maxTargets: number;
+      canTargetSelf?: boolean;
+    }
+  | {
+      kind: 'enemy';
+      maxTargets: number;
+    }
+  | {
+      kind: 'enemies';
+    };
+
+export type SkillMitigation =
+  | {
+      kind: 'damage-down';
+      target: MitigationTarget;
+      pct: number;
+      durationSec: number;
+      damageType: MitigationDamageType;
+      targeting: SkillMitigationTargeting;
+    }
+  | {
+      kind: 'shield';
+      durationSec: number;
+      potency?: number;
+      maxHpPct?: number;
+      healingPct?: number;
+      targeting: SkillMitigationTargeting;
+    }
+  | {
+      kind: 'hot';
+      durationSec: number;
+      potency: number;
+      targeting: SkillMitigationTargeting;
+    };
+
 export interface Fight {
   id: number;
   start: number;
@@ -15,15 +62,27 @@ export interface Actor {
   subType: string;
 }
 
+export interface SkillI18n {
+  name_jp: string;
+  name_en: string;
+  name_fr: string;
+  name_de: string;
+}
+
 export interface Skill {
   id: string;
   name: string;
+  name_jp: string;
+  name_en: string;
+  name_fr: string;
+  name_de: string;
   cooldownSec: number;
   durationSec: number;
   job: Job | 'ALL';
   color: string;
   actionId: number; // FFLogs 技能 ID
   icon?: string;
+  mitigation?: SkillMitigation[];
   cooldownGroup?: string; // 共享CD组 ID，在自己进入cd的同时会消耗冷却组的一层cd
 }
 
