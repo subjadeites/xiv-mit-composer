@@ -18,6 +18,6 @@ export function getMitigationBarHeights(
   const effectHeight = effectSec * zoom - MITIGATION_HEADER_HEIGHT;
   const cooldownSec = skill?.cooldownSec ?? 0;
   const cooldownHeight = Math.max(cooldownSec - effectSec, 0) * zoom;
-  const totalHeight = effectHeight + cooldownHeight;
+  const totalHeight = effectHeight + cooldownHeight + MITIGATION_HEADER_HEIGHT;
   return { effectHeight, cooldownHeight, totalHeight };
 }

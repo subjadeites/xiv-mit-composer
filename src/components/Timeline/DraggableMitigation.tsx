@@ -159,7 +159,13 @@ export function DraggableMitigation({
   );
 
   return (
-    <div ref={setNodeRef} style={style} className="group">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`group rounded-md transition-shadow ${
+        isSelected ? 'ring-2 ring-[#2f81f7] z-30' : ''
+      }`}
+    >
       <div
         {...attributes}
         {...listeners}
@@ -175,7 +181,7 @@ export function DraggableMitigation({
         <MitigationBarContent
           headerClassName={`relative z-10 shadow-[0_6px_12px_var(--color-skill-shadow)] ${
             skill?.color || 'bg-slate-600'
-          } ${isSelected ? 'ring-2 ring-[#2f81f7]' : ''}`}
+          }`}
           iconSrc={getSkillIconLocalSrc(skill?.actionId)}
           iconAlt={skill?.name ?? 'skill icon'}
           iconFallback={iconFallback}
