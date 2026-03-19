@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import type { CastEvent, DamageEvent, Job, MitEvent } from '../../model/types';
+import type { CastEvent, CooldownEvent, DamageEvent, Job, MitEvent } from '../../model/types';
 import { useStore } from '../../store';
 import { useShallow } from 'zustand/shallow';
+import { CooldownConstraintLayer } from './CooldownConstraintLayer';
 import { ContextMenu } from './ContextMenu';
 import { PinnedTimelineLanes } from './PinnedTimelineLanes';
 import type { TooltipData } from './types';
@@ -19,6 +20,7 @@ import { useTimelineScroll } from './useTimelineScroll';
 import { useBoxSelection } from './useBoxSelection';
 import { buildDropZoneId, type DropZoneData } from '../../dnd/types';
 import type { TimelineLayout } from './timelineLayout';
+import { getMitColumnKey } from './mitigationColumnUtils';
 
 const VISIBLE_RANGE_BUFFER_MS = 5000;
 const ZOOM_WHEEL_STEP = 5;
@@ -44,6 +46,7 @@ interface Props {
   damageEvents: DamageEvent[];
   secondaryDamageEvents?: DamageEvent[];
   mitEvents: MitEvent[];
+  cooldownEvents: CooldownEvent[];
   activeDragId?: string | null;
   dragPreviewPx?: number;
 }
@@ -67,6 +70,7 @@ export function TimelineCanvas({
   damageEvents,
   secondaryDamageEvents = [],
   mitEvents,
+  cooldownEvents,
   activeDragId,
   dragPreviewPx = 0,
 }: Props) {
@@ -171,18 +175,6 @@ export function TimelineCanvas({
       ? mitEvents.filter((mit) => mit.ownerJob === secondaryJob)
       : [];
 
-  const getMitColumnKey = (mit: MitEvent) => {
-    const ownerJob = mit.ownerJob ?? layout.defaultOwnerJob;
-    const baseSkillId = normalizeSkillId(mit.skillId);
-    if (ownerJob) {
-      const jobKey = `${baseSkillId}:${ownerJob}`;
-      if (Object.prototype.hasOwnProperty.call(layout.columnMap, jobKey)) {
-        return jobKey;
-      }
-    }
-    return baseSkillId;
-  };
-
   const {
     boxSelection,
     handlePointerDown,
@@ -196,7 +188,7 @@ export function TimelineCanvas({
     zoom,
     mitX,
     getMitColumnLeft,
-    getMitColumnKey,
+    getMitColumnKey: (mit) => getMitColumnKey(mit, layout),
     setSelectedMitIds,
     setContextMenu,
     setEditingMitId: handleEditingChange,
@@ -322,6 +314,20 @@ export function TimelineCanvas({
               rulerStepSec={RULER_STEP_SEC}
             />
 
+            <div
+              className="absolute top-0"
+              style={{ left: mitX, width: layout.mitAreaWidth, height: timelineHeight }}
+            >
+              <CooldownConstraintLayer
+                cooldownEvents={cooldownEvents}
+                mitEvents={mitEvents}
+                layout={layout}
+                timelineHeight={timelineHeight}
+                zoom={zoom}
+                getMitColumnLeft={getMitColumnLeft}
+              />
+            </div>
+
             <MitigationLayer
               containerId={containerId}
               setMitLaneRef={setMitLaneRef}
@@ -333,9 +339,10 @@ export function TimelineCanvas({
               reprisalZIndexMap={reprisalZIndexMap}
               getEffectiveStartMs={getEffectiveStartMs}
               getMitColumnLeft={getMitColumnLeft}
-              getMitColumnKey={getMitColumnKey}
+              getMitColumnKey={(mit) => getMitColumnKey(mit, layout)}
               columnMap={layout.columnMap}
               mitEvents={mitEvents}
+              cooldownEvents={cooldownEvents}
               zoom={zoom}
               editingMitId={editingMitId}
               setEditingMitId={handleEditingChange}
